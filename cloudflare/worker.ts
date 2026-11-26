@@ -29,17 +29,13 @@ interface AuthUser {
   role: 'customer' | 'admin';
 }
 
-const FREE_DELIVERY_THRESHOLD = 199;
-const BASE_DELIVERY_FEE = 25;
-const HANDLING_FEE = 5;
-
 const RIDER_POOL = [
   { name: 'Rahul Sharma', phone: '+91 98765 43210' },
   { name: 'Vikram Patel', phone: '+91 98112 34567' },
   { name: 'Arjun Verma', phone: '+91 97400 11223' },
 ];
 
-const STAGES = ['confirmed', 'packing', 'out_for_delivery', 'arriving', 'delivered'] as const;
+const STAGES = ['confirmed', 'packing', 'out_for_delivery', 'arriving', 'delivered', 'cancelled'] as const;
 
 function toHex(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
@@ -150,6 +146,7 @@ function mapProduct(row: Record<string, unknown>) {
     price: Number(row.price),
     mrp: Number(row.mrp),
     emoji: String(row.emoji),
+    imageUrl: String(row.image_url ?? ''),
     cardBg: String(row.card_bg),
     rating: Number(row.rating),
     deliveryMins: Number(row.delivery_mins),
@@ -161,22 +158,56 @@ function mapProduct(row: Record<string, unknown>) {
   };
 }
 
-function computeCouponDiscount(code: string | null | undefined, itemTotal: number) {
-  const normalized = (code ?? '').trim().toUpperCase();
-  if (normalized === 'ZEPTO50' && itemTotal >= 249) {
-    return { couponCode: 'ZEPTO50', discount: 50, freeDelivery: false };
-  }
-  if (normalized === 'FIRST10' && itemTotal >= 149) {
+function mapSettings(row: Record<string, unknown> | null) {
+  if (!row) {
     return {
-      couponCode: 'FIRST10',
-      discount: Math.min(75, Math.round(itemTotal * 0.1)),
-      freeDelivery: false,
+      storeName: 'QuickMart',
+      tagline: '10-Minute Express Delivery',
+      logoEmoji: '⚡',
+      primaryColor: '#4B0082',
+      accentColor: '#FF3269',
+      deliveryEtaMins: 8,
+      deliveryFee: 25,
+      freeDeliveryThreshold: 199,
+      handlingFee: 5,
+      heroBadge: 'QUICKMART SUPER SAVER',
+      heroTitle: 'Flat ₹50 OFF on Fresh Groceries',
+      heroSubtitle: 'Delivered to your doorstep in 8 minutes flat',
+      supportPhone: '+91 98000 00001',
+      supportEmail: 'support@quickmart.app',
+      storeAddress: 'HSR Layout Sector 2, Bengaluru, Karnataka 560102',
     };
   }
-  if (normalized === 'FREEDEL' && itemTotal >= 1) {
-    return { couponCode: 'FREEDEL', discount: 0, freeDelivery: true };
-  }
-  return { couponCode: null, discount: 0, freeDelivery: false };
+  return {
+    storeName: String(row.store_name),
+    tagline: String(row.tagline),
+    logoEmoji: String(row.logo_emoji),
+    primaryColor: String(row.primary_color),
+    accentColor: String(row.accent_color),
+    deliveryEtaMins: Number(row.delivery_eta_mins),
+    deliveryFee: Number(row.delivery_fee),
+    freeDeliveryThreshold: Number(row.free_delivery_threshold),
+    handlingFee: Number(row.handling_fee),
+    heroBadge: String(row.hero_badge),
+    heroTitle: String(row.hero_title),
+    heroSubtitle: String(row.hero_subtitle),
+    supportPhone: String(row.support_phone),
+    supportEmail: String(row.support_email),
+    storeAddress: String(row.store_address),
+  };
+}
+
+function mapCoupon(row: Record<string, unknown>) {
+  return {
+    code: String(row.code),
+    title: String(row.title),
+    description: String(row.description),
+    minOrder: Number(row.min_order),
+    type: String(row.type) as 'flat' | 'percent' | 'free_delivery',
+    value: Number(row.value),
+    maxDiscount: row.max_discount !== null && row.max_discount !== undefined ? Number(row.max_discount) : undefined,
+    isActive: Boolean(row.is_active),
+  };
 }
 
 function hydrateOrders(
@@ -208,6 +239,7 @@ function hydrateOrders(
         price: Number(it.price),
         mrp: Number(it.mrp),
         emoji: String(it.product_emoji),
+        imageUrl: '',
         cardBg: '#F3EAFF',
         rating: 4.8,
         deliveryMins: Number(addr?.etaMins ?? 8),
@@ -228,6 +260,7 @@ function hydrateOrders(
       totalSavings: Number(o.total_savings),
       address: addr,
       paymentMethod: String(o.payment_method),
+      paymentStatus: String(o.payment_status ?? 'pending'),
       createdAt: new Date(String(o.created_at)).getTime() || Date.now(),
       etaSecondsRemaining: Number(o.eta_seconds_remaining),
       stage: String(o.stage),
@@ -248,13 +281,170 @@ async function handleApi(req: Request, env: Env): Promise<Response> {
   }
 
   if (path === '/api/catalog' && req.method === 'GET') {
-    const [cats, prods] = await Promise.all([
+    const [cats, prods, settingsRow, couponRows] = await Promise.all([
       db.prepare('SELECT * FROM categories ORDER BY sort_order ASC, name ASC').all(),
       db.prepare('SELECT * FROM products ORDER BY created_at DESC, id ASC').all(),
+      db.prepare("SELECT * FROM store_settings WHERE id = 'default' LIMIT 1").first(),
+      db.prepare('SELECT * FROM coupons WHERE is_active = 1 ORDER BY min_order ASC').all(),
     ]);
     return Response.json({
       categories: cats.results.map(mapCategory),
       products: prods.results.map(mapProduct),
+      settings: mapSettings(settingsRow),
+      coupons: couponRows.results.map(mapCoupon),
+    });
+  }
+
+  if (path === '/api/settings') {
+    if (req.method === 'GET') {
+      const row = await db.prepare("SELECT * FROM store_settings WHERE id = 'default' LIMIT 1").first();
+      return Response.json({ settings: mapSettings(row) });
+    }
+    if (req.method === 'PUT') {
+      const user = await getAuthenticatedUser(req, db);
+      if (!user) return Response.json({ error: 'Authentication required' }, { status: 401 });
+      if (user.role !== 'admin') return Response.json({ error: 'Admin access required' }, { status: 403 });
+
+      const body = (await req.json()) as Record<string, unknown>;
+      const current = mapSettings(
+        await db.prepare("SELECT * FROM store_settings WHERE id = 'default' LIMIT 1").first(),
+      );
+
+      const next = {
+        storeName: String(body.storeName ?? current.storeName).trim() || current.storeName,
+        tagline: String(body.tagline ?? current.tagline).trim() || current.tagline,
+        logoEmoji: String(body.logoEmoji ?? current.logoEmoji).trim() || current.logoEmoji,
+        primaryColor: String(body.primaryColor ?? current.primaryColor).trim() || current.primaryColor,
+        accentColor: String(body.accentColor ?? current.accentColor).trim() || current.accentColor,
+        deliveryEtaMins: Math.max(1, Math.round(Number(body.deliveryEtaMins ?? current.deliveryEtaMins))),
+        deliveryFee: Math.max(0, Math.round(Number(body.deliveryFee ?? current.deliveryFee))),
+        freeDeliveryThreshold: Math.max(0, Math.round(Number(body.freeDeliveryThreshold ?? current.freeDeliveryThreshold))),
+        handlingFee: Math.max(0, Math.round(Number(body.handlingFee ?? current.handlingFee))),
+        heroBadge: String(body.heroBadge ?? current.heroBadge).trim() || current.heroBadge,
+        heroTitle: String(body.heroTitle ?? current.heroTitle).trim() || current.heroTitle,
+        heroSubtitle: String(body.heroSubtitle ?? current.heroSubtitle).trim() || current.heroSubtitle,
+        supportPhone: String(body.supportPhone ?? current.supportPhone).trim() || current.supportPhone,
+        supportEmail: String(body.supportEmail ?? current.supportEmail).trim() || current.supportEmail,
+        storeAddress: String(body.storeAddress ?? current.storeAddress).trim() || current.storeAddress,
+      };
+
+      await db
+        .prepare(
+          `UPDATE store_settings
+           SET store_name = ?, tagline = ?, logo_emoji = ?, primary_color = ?, accent_color = ?,
+               delivery_eta_mins = ?, delivery_fee = ?, free_delivery_threshold = ?, handling_fee = ?,
+               hero_badge = ?, hero_title = ?, hero_subtitle = ?, support_phone = ?, support_email = ?,
+               store_address = ?, updated_at = datetime('now')
+           WHERE id = 'default'`,
+        )
+        .bind(
+          next.storeName,
+          next.tagline,
+          next.logoEmoji,
+          next.primaryColor,
+          next.accentColor,
+          next.deliveryEtaMins,
+          next.deliveryFee,
+          next.freeDeliveryThreshold,
+          next.handlingFee,
+          next.heroBadge,
+          next.heroTitle,
+          next.heroSubtitle,
+          next.supportPhone,
+          next.supportEmail,
+          next.storeAddress,
+        )
+        .run();
+
+      return Response.json({ settings: next });
+    }
+  }
+
+  if (path === '/api/coupons') {
+    if (req.method === 'GET') {
+      const rows = await db.prepare('SELECT * FROM coupons ORDER BY created_at DESC').all();
+      return Response.json({ coupons: rows.results.map(mapCoupon) });
+    }
+    const user = await getAuthenticatedUser(req, db);
+    if (!user) return Response.json({ error: 'Authentication required' }, { status: 401 });
+    if (user.role !== 'admin') return Response.json({ error: 'Admin access required' }, { status: 403 });
+
+    if (req.method === 'POST') {
+      const body = (await req.json()) as Record<string, unknown>;
+      const code = String(body.code ?? '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+      const title = String(body.title ?? '').trim();
+      const description = String(body.description ?? '').trim();
+      const type = ['flat', 'percent', 'free_delivery'].includes(String(body.type))
+        ? String(body.type)
+        : 'flat';
+      const minOrder = Math.max(1, Math.round(Number(body.minOrder ?? 99)));
+      const value = Math.max(0, Math.round(Number(body.value ?? 25)));
+      const maxDiscount = body.maxDiscount ? Math.round(Number(body.maxDiscount)) : null;
+
+      if (!code || !title) {
+        return Response.json({ error: 'Coupon code and title are required' }, { status: 400 });
+      }
+
+      await db
+        .prepare(
+          `INSERT INTO coupons (code, title, description, min_order, type, value, max_discount, is_active)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+           ON CONFLICT(code) DO UPDATE SET
+             title = excluded.title,
+             description = excluded.description,
+             min_order = excluded.min_order,
+             type = excluded.type,
+             value = excluded.value,
+             max_discount = excluded.max_discount,
+             is_active = 1`,
+        )
+        .bind(code, title, description || `Min order ₹${minOrder}`, minOrder, type, value, maxDiscount)
+        .run();
+
+      const saved = await db.prepare('SELECT * FROM coupons WHERE code = ?').bind(code).first();
+      return Response.json({ coupon: mapCoupon(saved!) }, { status: 201 });
+    }
+
+    if (req.method === 'DELETE') {
+      const code = url.searchParams.get('code')?.trim().toUpperCase();
+      if (!code) return Response.json({ error: 'Coupon code is required' }, { status: 400 });
+      await db.prepare('DELETE FROM coupons WHERE code = ?').bind(code).run();
+      return Response.json({ ok: true, code });
+    }
+  }
+
+  if (path === '/api/admin/stats' && req.method === 'GET') {
+    const user = await getAuthenticatedUser(req, db);
+    if (!user) return Response.json({ error: 'Authentication required' }, { status: 401 });
+    if (user.role !== 'admin') return Response.json({ error: 'Admin access required' }, { status: 403 });
+
+    const [orderAgg, prodAgg, userAgg] = await Promise.all([
+      db
+        .prepare(
+          `SELECT
+             COALESCE(SUM(CASE WHEN stage != 'cancelled' THEN grand_total ELSE 0 END), 0) AS revenue,
+             COUNT(*) AS total_orders,
+             SUM(CASE WHEN stage NOT IN ('delivered', 'cancelled') THEN 1 ELSE 0 END) AS active_orders,
+             SUM(CASE WHEN stage = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_orders
+           FROM orders`,
+        )
+        .first<Record<string, number>>(),
+      db
+        .prepare('SELECT COUNT(*) AS total_skus, SUM(CASE WHEN stock <= 10 THEN 1 ELSE 0 END) AS low_stock FROM products')
+        .first<Record<string, number>>(),
+      db.prepare("SELECT COUNT(*) AS customers FROM users WHERE role = 'customer'").first<Record<string, number>>(),
+    ]);
+
+    return Response.json({
+      stats: {
+        totalRevenue: Number(orderAgg?.revenue ?? 0),
+        totalOrders: Number(orderAgg?.total_orders ?? 0),
+        activeOrders: Number(orderAgg?.active_orders ?? 0),
+        cancelledOrders: Number(orderAgg?.cancelled_orders ?? 0),
+        totalSkus: Number(prodAgg?.total_skus ?? 0),
+        lowStockCount: Number(prodAgg?.low_stock ?? 0),
+        totalCustomers: Number(userAgg?.customers ?? 0),
+      },
     });
   }
 
@@ -275,19 +465,20 @@ async function handleApi(req: Request, env: Env): Promise<Response> {
       const price = Math.max(1, Math.round(Number(body.price) || 0));
       const mrp = Math.max(price, Math.round(Number(body.mrp) || price));
       const emoji = String(body.emoji ?? '🛒').trim() || '🛒';
+      const imageUrl = String(body.imageUrl ?? '').trim();
       const cardBg = String(body.cardBg ?? '#F3EAFF').trim();
       const description = String(body.description ?? 'Freshly stocked for 8-minute delivery.').trim();
       const stock = Math.max(0, Math.round(Number(body.stock ?? 25)));
       const isFlashDeal = body.isFlashDeal ? 1 : 0;
       const isBestseller = body.isBestseller ? 1 : 0;
-      const highlights = JSON.stringify(['Freshly stocked', '8-min delivery', 'Quality checked']);
+      const highlights = JSON.stringify(['Freshly stocked', 'Express delivery', 'Quality checked']);
 
       await db
         .prepare(
-          `INSERT INTO products (id, name, brand, category_id, unit, price, mrp, emoji, card_bg, rating, delivery_mins, description, highlights, is_bestseller, is_flash_deal, stock)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 4.8, 8, ?, ?, ?, ?, ?)`,
+          `INSERT INTO products (id, name, brand, category_id, unit, price, mrp, emoji, image_url, card_bg, rating, delivery_mins, description, highlights, is_bestseller, is_flash_deal, stock)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 4.8, 8, ?, ?, ?, ?, ?)`,
         )
-        .bind(id, name, brand, categoryId, unit, price, mrp, emoji, cardBg, description, highlights, isBestseller, isFlashDeal, stock)
+        .bind(id, name, brand, categoryId, unit, price, mrp, emoji, imageUrl, cardBg, description, highlights, isBestseller, isFlashDeal, stock)
         .run();
 
       const created = await db.prepare('SELECT * FROM products WHERE id = ?').bind(id).first();
@@ -300,6 +491,13 @@ async function handleApi(req: Request, env: Env): Promise<Response> {
       const existing = await db.prepare('SELECT * FROM products WHERE id = ? LIMIT 1').bind(id).first();
       if (!existing) return Response.json({ error: 'Product not found' }, { status: 404 });
 
+      const nextName = body.name !== undefined ? String(body.name).trim() || String(existing.name) : String(existing.name);
+      const nextBrand = body.brand !== undefined ? String(body.brand).trim() || String(existing.brand) : String(existing.brand);
+      const nextUnit = body.unit !== undefined ? String(body.unit).trim() || String(existing.unit) : String(existing.unit);
+      const nextCategory = body.categoryId !== undefined ? String(body.categoryId).trim() : String(existing.category_id);
+      const nextEmoji = body.emoji !== undefined ? String(body.emoji).trim() || String(existing.emoji) : String(existing.emoji);
+      const nextImageUrl = body.imageUrl !== undefined ? String(body.imageUrl).trim() : String(existing.image_url ?? '');
+      const nextDescription = body.description !== undefined ? String(body.description).trim() : String(existing.description ?? '');
       const nextPrice = body.price !== undefined ? Math.max(1, Math.round(Number(body.price))) : Number(existing.price);
       const nextMrp = body.mrp !== undefined ? Math.max(nextPrice, Math.round(Number(body.mrp))) : Math.max(nextPrice, Number(existing.mrp));
       const nextStock = body.stock !== undefined ? Math.max(0, Math.round(Number(body.stock))) : Number(existing.stock);
@@ -307,8 +505,27 @@ async function handleApi(req: Request, env: Env): Promise<Response> {
       const nextBest = body.isBestseller !== undefined ? (body.isBestseller ? 1 : 0) : Number(existing.is_bestseller);
 
       await db
-        .prepare('UPDATE products SET price = ?, mrp = ?, stock = ?, is_flash_deal = ?, is_bestseller = ? WHERE id = ?')
-        .bind(nextPrice, nextMrp, nextStock, nextFlash, nextBest, id)
+        .prepare(
+          `UPDATE products
+           SET name = ?, brand = ?, unit = ?, category_id = ?, emoji = ?, image_url = ?,
+               description = ?, price = ?, mrp = ?, stock = ?, is_flash_deal = ?, is_bestseller = ?
+           WHERE id = ?`,
+        )
+        .bind(
+          nextName,
+          nextBrand,
+          nextUnit,
+          nextCategory,
+          nextEmoji,
+          nextImageUrl,
+          nextDescription,
+          nextPrice,
+          nextMrp,
+          nextStock,
+          nextFlash,
+          nextBest,
+          id,
+        )
         .run();
 
       const updated = await db.prepare('SELECT * FROM products WHERE id = ?').bind(id).first();
@@ -448,6 +665,37 @@ async function handleApi(req: Request, env: Env): Promise<Response> {
     }
   }
 
+  if (path === '/api/orders/cancel' && req.method === 'POST') {
+    const user = await getAuthenticatedUser(req, db);
+    if (!user) return Response.json({ error: 'Authentication required' }, { status: 401 });
+
+    const body = (await req.json()) as { orderId?: string };
+    const orderId = String(body.orderId ?? '').trim();
+    const existing = await db.prepare('SELECT * FROM orders WHERE id = ? LIMIT 1').bind(orderId).first();
+    if (!existing) return Response.json({ error: 'Order not found' }, { status: 404 });
+    if (String(existing.user_id) !== user.id && user.role !== 'admin') {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (!['confirmed', 'packing'].includes(String(existing.stage))) {
+      return Response.json({ error: 'Order cannot be cancelled once out for delivery' }, { status: 400 });
+    }
+
+    const itemRows = await db.prepare('SELECT * FROM order_items WHERE order_id = ?').bind(orderId).all();
+    const stmts: D1PreparedStatement[] = [
+      db.prepare("UPDATE orders SET stage = 'cancelled', eta_seconds_remaining = 0 WHERE id = ?").bind(orderId),
+    ];
+    for (const row of itemRows.results) {
+      stmts.push(
+        db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').bind(Number(row.quantity), String(row.product_id)),
+      );
+    }
+    await db.batch(stmts);
+
+    const updated = await db.prepare('SELECT * FROM orders WHERE id = ?').bind(orderId).first();
+    const [hydrated] = hydrateOrders([updated!], itemRows.results);
+    return Response.json({ order: hydrated });
+  }
+
   if (path === '/api/orders') {
     const user = await getAuthenticatedUser(req, db);
 
@@ -484,6 +732,10 @@ async function handleApi(req: Request, env: Env): Promise<Response> {
       if (rawItems.length === 0 || !address?.line1) {
         return Response.json({ error: 'Cart items and delivery address are required' }, { status: 400 });
       }
+
+      const settings = mapSettings(
+        await db.prepare("SELECT * FROM store_settings WHERE id = 'default' LIMIT 1").first(),
+      );
 
       let itemTotal = 0;
       let mrpTotal = 0;
@@ -522,23 +774,52 @@ async function handleApi(req: Request, env: Env): Promise<Response> {
         });
       }
 
-      const coupon = computeCouponDiscount(body.couponCode, itemTotal);
-      const deliveryFee = itemTotal >= FREE_DELIVERY_THRESHOLD || coupon.freeDelivery ? 0 : BASE_DELIVERY_FEE;
-      const handlingFee = HANDLING_FEE;
-      const grandTotal = Math.max(0, itemTotal + deliveryFee + handlingFee - coupon.discount);
-      const deliverySavings = deliveryFee === 0 ? BASE_DELIVERY_FEE : 0;
-      const totalSavings = Math.max(0, mrpTotal - itemTotal) + coupon.discount + deliverySavings;
+      let couponCode: string | null = null;
+      let couponDiscount = 0;
+      let freeDeliveryCoupon = false;
+
+      if (body.couponCode) {
+        const codeUpper = String(body.couponCode).trim().toUpperCase();
+        const couponRow = await db
+          .prepare('SELECT * FROM coupons WHERE code = ? AND is_active = 1 LIMIT 1')
+          .bind(codeUpper)
+          .first();
+        if (couponRow && itemTotal >= Number(couponRow.min_order)) {
+          couponCode = String(couponRow.code);
+          const type = String(couponRow.type);
+          const value = Number(couponRow.value);
+          const maxDisc = couponRow.max_discount !== null && couponRow.max_discount !== undefined ? Number(couponRow.max_discount) : null;
+          if (type === 'flat') {
+            couponDiscount = value;
+          } else if (type === 'percent') {
+            const raw = Math.round((itemTotal * value) / 100);
+            couponDiscount = maxDisc ? Math.min(raw, maxDisc) : raw;
+          } else if (type === 'free_delivery') {
+            freeDeliveryCoupon = true;
+          }
+        }
+      }
+
+      const deliveryFee =
+        itemTotal >= settings.freeDeliveryThreshold || freeDeliveryCoupon
+          ? 0
+          : settings.deliveryFee;
+      const handlingFee = settings.handlingFee;
+      const grandTotal = Math.max(0, itemTotal + deliveryFee + handlingFee - couponDiscount);
+      const deliverySavings = deliveryFee === 0 ? settings.deliveryFee : 0;
+      const totalSavings = Math.max(0, mrpTotal - itemTotal) + couponDiscount + deliverySavings;
 
       const orderId = `QM-${Math.floor(100000 + Math.random() * 900000)}`;
-      const etaMins = Number(address.etaMins || 8);
+      const etaMins = Number(address.etaMins || settings.deliveryEtaMins);
       const etaSec = etaMins * 60;
       const rider = RIDER_POOL[Math.floor(Math.random() * RIDER_POOL.length)];
+      const paymentStatus = paymentMethod.toLowerCase().includes('cash') ? 'cod_pending' : 'paid_verified';
 
       const stmts: D1PreparedStatement[] = [
         db
           .prepare(
-            `INSERT INTO orders (id, user_id, item_total, delivery_fee, handling_fee, discount, grand_total, total_savings, coupon_code, address_snapshot, payment_method, stage, eta_seconds_remaining, rider_name, rider_phone)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?)`,
+            `INSERT INTO orders (id, user_id, item_total, delivery_fee, handling_fee, discount, grand_total, total_savings, coupon_code, address_snapshot, payment_method, payment_status, stage, eta_seconds_remaining, rider_name, rider_phone)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?)`,
           )
           .bind(
             orderId,
@@ -546,12 +827,13 @@ async function handleApi(req: Request, env: Env): Promise<Response> {
             itemTotal,
             deliveryFee,
             handlingFee,
-            coupon.discount,
+            couponDiscount,
             grandTotal,
             totalSavings,
-            coupon.couponCode,
+            couponCode,
             JSON.stringify(address),
             paymentMethod,
+            paymentStatus,
             etaSec,
             rider.name,
             rider.phone,
@@ -586,18 +868,23 @@ async function handleApi(req: Request, env: Env): Promise<Response> {
       if (String(existing.user_id) !== user.id && user.role !== 'admin') {
         return Response.json({ error: 'Forbidden' }, { status: 403 });
       }
+      if (String(existing.stage) === 'cancelled') {
+        return Response.json({ error: 'Cancelled order cannot advance' }, { status: 400 });
+      }
 
-      const currentIdx = STAGES.indexOf(String(existing.stage) as (typeof STAGES)[number]);
+      const activeStages = ['confirmed', 'packing', 'out_for_delivery', 'arriving', 'delivered'] as const;
+      const currentIdx = activeStages.indexOf(String(existing.stage) as (typeof activeStages)[number]);
       const nextStage =
         body.stage && STAGES.includes(body.stage as (typeof STAGES)[number])
           ? body.stage
-          : STAGES[Math.min(currentIdx + 1, STAGES.length - 1)];
+          : activeStages[Math.min(currentIdx + 1, activeStages.length - 1)];
       const etaMap: Record<string, number> = {
         confirmed: 480,
         packing: 330,
         out_for_delivery: 180,
         arriving: 90,
         delivered: 0,
+        cancelled: 0,
       };
 
       await db

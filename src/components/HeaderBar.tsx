@@ -15,17 +15,17 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onPressSearch,
   onPressProfile,
 }) => {
-  const { selectedAddress, user, dbConnected } = useStore();
+  const { selectedAddress, user, dbConnected, settings } = useStore();
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: settings.primaryColor }]}>
       <View style={styles.topRow}>
         <Pressable onPress={onPressAddress} style={styles.locationBtn}>
           <View style={styles.etaLine}>
             <View style={styles.boltPill}>
-              <Ionicons name="flash" size={12} color={COLORS.primaryDark} />
+              <Text style={{ fontSize: 11 }}>{settings.logoEmoji}</Text>
               <Text style={styles.etaMinutes}>
-                Delivery in {selectedAddress.etaMins} mins
+                {settings.storeName} • {settings.deliveryEtaMins} mins
               </Text>
             </View>
           </View>

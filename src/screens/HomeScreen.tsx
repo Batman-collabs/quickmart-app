@@ -5,12 +5,14 @@ import { useStore } from '../context/StoreContext';
 import { ProductCard } from '../components/ProductCard';
 import { COLORS, SHADOWS } from '../theme/colors';
 import { Product } from '../types';
+import { LegalDocKey } from '../components/LegalModal';
 
 interface HomeScreenProps {
   onSelectCategory: (categoryId: string) => void;
   onSelectProduct: (product: Product) => void;
   onOpenOrders: () => void;
   onOpenCart: () => void;
+  onOpenLegal: (tab: LegalDocKey) => void;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
@@ -18,13 +20,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onSelectProduct,
   onOpenOrders,
   onOpenCart,
+  onOpenLegal,
 }) => {
   const {
+    settings,
+    coupons,
     categories,
     products,
     activeOrder,
     itemTotal,
     freeDeliveryThreshold,
+    deliveryFee,
     applyCoupon,
     appliedCoupon,
   } = useStore();
@@ -32,6 +38,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const flashDeals = products.filter((p) => p.isFlashDeal);
   const bestsellers = products.filter((p) => p.isBestseller);
   const remainingForFreeDel = Math.max(0, freeDeliveryThreshold - itemTotal);
+  const primaryCoupon = coupons[0];
 
   const stageLabel: Record<string, string> = {
     confirmed: 'Order confirmed • Assigning partner',
@@ -39,6 +46,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     out_for_delivery: 'Rider is on the way!',
     arriving: 'Rider arriving at your doorstep',
     delivered: 'Delivered',
+    cancelled: 'Cancelled',
   };
 
   return (
@@ -47,9 +55,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      {/* Active Order Live Banner */}
-      {activeOrder && activeOrder.stage !== 'delivered' && (
-        <Pressable onPress={onOpenOrders} style={styles.liveOrderBanner}>
+      {activeOrder && activeOrder.stage !== 'delivered' && activeOrder.stage !== 'cancelled' && (
+        <Pressable
+          onPress={onOpenOrders}
+          style={[styles.liveOrderBanner, { backgroundColor: settings.primaryColor }]}
+        >
           <View style={styles.liveLeft}>
             <View style={styles.liveDot} />
             <View style={{ flex: 1 }}>
@@ -62,13 +72,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </View>
           </View>
           <View style={styles.trackPill}>
-            <Text style={styles.trackPillText}>Track</Text>
-            <Ionicons name="chevron-forward" size={14} color={COLORS.primary} />
+            <Text style={[styles.trackPillText, { color: settings.primaryColor }]}>Track</Text>
+            <Ionicons name="chevron-forward" size={14} color={settings.primaryColor} />
           </View>
         </Pressable>
       )}
 
-      {/* Free Delivery Progress Strip */}
       <View style={styles.freeDeliveryStrip}>
         <Ionicons
           name={remainingForFreeDel === 0 ? 'checkmark-circle' : 'bicycle-outline'}
@@ -78,36 +87,36 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         <Text style={styles.freeDeliveryText}>
           {remainingForFreeDel === 0
             ? 'Yay! You unlocked FREE Express Delivery 🎉'
-            : `Add items worth ₹${remainingForFreeDel} more for FREE delivery`}
+            : `Add items worth ₹${remainingForFreeDel} more for FREE delivery (save ₹${settings.deliveryFee || deliveryFee})`}
         </Text>
       </View>
 
-      {/* Hero Promo Banner */}
-      <View style={styles.heroCard}>
+      <View style={[styles.heroCard, { backgroundColor: settings.primaryColor }]}>
         <View style={{ flex: 1 }}>
           <View style={styles.heroTag}>
-            <Text style={styles.heroTagText}>QUICKMART SUPER SAVER</Text>
+            <Text style={styles.heroTagText}>{settings.heroBadge}</Text>
           </View>
-          <Text style={styles.heroTitle}>Flat ₹50 OFF on Fresh Groceries</Text>
-          <Text style={styles.heroSubtitle}>
-            Delivered to your doorstep in 8 minutes flat
-          </Text>
-          <Pressable
-            onPress={() => {
-              const res = applyCoupon('ZEPTO50');
-              if (!res.ok) onOpenCart();
-            }}
-            style={styles.heroCta}
-          >
-            <Text style={styles.heroCtaText}>
-              {appliedCoupon?.code === 'ZEPTO50' ? 'ZEPTO50 APPLIED ✓' : 'USE CODE: ZEPTO50'}
-            </Text>
-          </Pressable>
+          <Text style={styles.heroTitle}>{settings.heroTitle}</Text>
+          <Text style={styles.heroSubtitle}>{settings.heroSubtitle}</Text>
+          {primaryCoupon && (
+            <Pressable
+              onPress={() => {
+                const res = applyCoupon(primaryCoupon.code);
+                if (!res.ok) onOpenCart();
+              }}
+              style={[styles.heroCta, { backgroundColor: settings.accentColor }]}
+            >
+              <Text style={styles.heroCtaText}>
+                {appliedCoupon?.code === primaryCoupon.code
+                  ? `${primaryCoupon.code} APPLIED ✓`
+                  : `USE CODE: ${primaryCoupon.code}`}
+              </Text>
+            </Pressable>
+          )}
         </View>
         <Text style={styles.heroEmoji}>🛍️</Text>
       </View>
 
-      {/* Flash Deals Horizontal Rail */}
       <View style={styles.sectionHeader}>
         <View style={styles.sectionTitleRow}>
           <Text style={styles.sectionTitle}>⚡ Flash Deals</Text>
@@ -116,7 +125,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </View>
         </View>
         <Pressable onPress={() => categories[0] && onSelectCategory(categories[0].id)}>
-          <Text style={styles.seeAll}>See all</Text>
+          <Text style={[styles.seeAll, { color: settings.accentColor }]}>See all</Text>
         </Pressable>
       </View>
 
@@ -136,7 +145,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         ))}
       </ScrollView>
 
-      {/* Shop By Category Grid */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Shop by Category</Text>
       </View>
@@ -161,11 +169,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         ))}
       </View>
 
-      {/* Bestsellers 2-Column Grid */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>🔥 Bestsellers Near You</Text>
-        <Pressable onPress={() => (categories[1] ?? categories[0]) && onSelectCategory((categories[1] ?? categories[0]).id)}>
-          <Text style={styles.seeAll}>Explore</Text>
+        <Pressable
+          onPress={() =>
+            (categories[1] ?? categories[0]) &&
+            onSelectCategory((categories[1] ?? categories[0]).id)
+          }
+        >
+          <Text style={[styles.seeAll, { color: settings.accentColor }]}>Explore</Text>
         </Pressable>
       </View>
 
@@ -175,6 +187,30 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             <ProductCard product={item} onPress={onSelectProduct} />
           </View>
         ))}
+      </View>
+
+      {/* Commercial Store Footer */}
+      <View style={styles.footerCard}>
+        <Text style={styles.footerBrand}>
+          {settings.logoEmoji} {settings.storeName} — {settings.tagline}
+        </Text>
+        <Text style={styles.footerMeta}>
+          {settings.storeAddress} • {settings.supportPhone}
+        </Text>
+        <View style={styles.footerLinks}>
+          {(
+            [
+              { key: 'contact', label: 'Contact' },
+              { key: 'terms', label: 'Terms' },
+              { key: 'privacy', label: 'Privacy' },
+              { key: 'refund', label: 'Refunds' },
+            ] as { key: LegalDocKey; label: string }[]
+          ).map((l) => (
+            <Pressable key={l.key} onPress={() => onOpenLegal(l.key)} style={styles.footerLinkBtn}>
+              <Text style={styles.footerLinkText}>{l.label}</Text>
+            </Pressable>
+          ))}
+        </View>
       </View>
     </ScrollView>
   );
@@ -389,5 +425,43 @@ const styles = StyleSheet.create({
   gridItem: {
     width: '48.5%',
     marginBottom: 12,
+  },
+  footerCard: {
+    marginHorizontal: 14,
+    marginTop: 12,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    gap: 6,
+  },
+  footerBrand: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.text,
+  },
+  footerMeta: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
+  footerLinks: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  footerLinkBtn: {
+    backgroundColor: COLORS.surfaceMuted,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 99,
+  },
+  footerLinkText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
 });

@@ -3,19 +3,41 @@ import { CATEGORIES, COUPONS, DEFAULT_ADDRESSES, PRODUCTS } from '../data/catalo
 import { api, getStoredToken, setStoredToken } from '../services/api';
 import {
   Address,
+  AdminStats,
   CartItem,
   Category,
   Coupon,
   Order,
   OrderStage,
   Product,
+  StoreSettings,
   User,
 } from '../types';
+
+const DEFAULT_SETTINGS: StoreSettings = {
+  storeName: 'QuickMart',
+  tagline: '10-Minute Express Delivery',
+  logoEmoji: '⚡',
+  primaryColor: '#4B0082',
+  accentColor: '#FF3269',
+  deliveryEtaMins: 8,
+  deliveryFee: 25,
+  freeDeliveryThreshold: 199,
+  handlingFee: 5,
+  heroBadge: 'QUICKMART SUPER SAVER',
+  heroTitle: 'Flat ₹50 OFF on Fresh Groceries',
+  heroSubtitle: 'Delivered to your doorstep in 8 minutes flat',
+  supportPhone: '+91 98000 00001',
+  supportEmail: 'support@quickmart.app',
+  storeAddress: 'HSR Layout Sector 2, Bengaluru, Karnataka 560102',
+};
 
 interface StoreContextValue {
   user: User | null;
   dbConnected: boolean;
   loadingCatalog: boolean;
+  settings: StoreSettings;
+  coupons: Coupon[];
   categories: Category[];
   products: Product[];
   cart: CartItem[];
@@ -35,6 +57,7 @@ interface StoreContextValue {
   selectedAddress: Address;
   orders: Order[];
   allOrders: Order[];
+  adminStats: AdminStats | null;
   activeOrder: Order | null;
   addToCart: (product: Product) => void;
   decrementFromCart: (productId: string) => void;
@@ -47,21 +70,22 @@ interface StoreContextValue {
   removeCoupon: () => void;
   placeOrder: (paymentMethod: string) => Promise<{ ok: boolean; order?: Order; error?: string }>;
   advanceOrderStage: (orderId: string) => Promise<void>;
+  cancelOrder: (orderId: string) => Promise<void>;
   login: (email: string, password: string) => Promise<User>;
   register: (name: string, email: string, phone: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
   refreshCatalog: () => Promise<void>;
   loadAllOrders: () => Promise<void>;
+  loadAdminStats: () => Promise<void>;
+  updateSettings: (payload: Partial<StoreSettings>) => Promise<StoreSettings>;
+  createCoupon: (payload: Partial<Coupon>) => Promise<Coupon>;
+  deleteCoupon: (code: string) => Promise<void>;
   createProduct: (payload: Partial<Product>) => Promise<Product>;
   updateProduct: (payload: Partial<Product> & { id: string }) => Promise<Product>;
   deleteProduct: (id: string) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextValue | undefined>(undefined);
-
-const FREE_DELIVERY_THRESHOLD = 199;
-const BASE_DELIVERY_FEE = 25;
-const HANDLING_FEE = 5;
 
 const RIDER_POOL = [
   { name: 'Rahul Sharma', phone: '+91 98765 43210' },
@@ -82,17 +106,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [user, setUser] = useState<User | null>(null);
   const [dbConnected, setDbConnected] = useState(false);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
+  const [settings, setSettings] = useState<StoreSettings>(DEFAULT_SETTINGS);
+  const [coupons, setCoupons] = useState<Coupon[]>(COUPONS);
   const [categories, setCategories] = useState<Category[]>(CATEGORIES);
   const [products, setProducts] = useState<Product[]>(PRODUCTS);
-  const [cartMap, setCartMap] = useState<Record<string, number>>({
-    p5: 1,
-  });
+  const [cartMap, setCartMap] = useState<Record<string, number>>({ p5: 1 });
   const [favorites, setFavorites] = useState<string[]>(['p1', 'p5', 'p13']);
   const [addresses, setAddresses] = useState<Address[]>(DEFAULT_ADDRESSES);
   const [selectedAddressId, setSelectedAddressId] = useState<string>(DEFAULT_ADDRESSES[0].id);
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [allOrders, setAllOrders] = useState<Order[]>([]);
+  const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
 
   const loadUserData = useCallback(async () => {
     try {
@@ -112,6 +137,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const data = await api.getCatalog();
       if (data.categories.length > 0) setCategories(data.categories);
       if (data.products.length > 0) setProducts(data.products);
+      if (data.settings) setSettings(data.settings);
+      if (data.coupons) setCoupons(data.coupons);
       setDbConnected(true);
     } catch {
       setDbConnected(false);
@@ -180,26 +207,27 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deliveryFee = useMemo(() => {
     if (cart.length === 0) return 0;
-    if (itemTotal >= FREE_DELIVERY_THRESHOLD) return 0;
+    if (itemTotal >= settings.freeDeliveryThreshold) return 0;
     if (appliedCoupon?.type === 'free_delivery') return 0;
-    return BASE_DELIVERY_FEE;
-  }, [cart.length, itemTotal, appliedCoupon]);
+    return settings.deliveryFee;
+  }, [cart.length, itemTotal, appliedCoupon, settings.freeDeliveryThreshold, settings.deliveryFee]);
 
-  const handlingFee = cart.length > 0 ? HANDLING_FEE : 0;
+  const handlingFee = cart.length > 0 ? settings.handlingFee : 0;
   const grandTotal = Math.max(0, itemTotal + deliveryFee + handlingFee - couponDiscount);
-  const deliverySavings = cart.length > 0 && deliveryFee === 0 ? BASE_DELIVERY_FEE : 0;
+  const deliverySavings = cart.length > 0 && deliveryFee === 0 ? settings.deliveryFee : 0;
   const totalSavings = productSavings + couponDiscount + deliverySavings;
 
-  // Live countdown tick for active orders
   useEffect(() => {
-    const hasActive = orders.some((o) => o.stage !== 'delivered');
+    const hasActive = orders.some(
+      (o) => o.stage !== 'delivered' && o.stage !== 'cancelled',
+    );
     if (!hasActive) return;
 
     const timer = setInterval(() => {
       setOrders((prev) =>
         prev.map((order) => {
-          if (order.stage === 'delivered') return order;
-          const totalSec = (order.address?.etaMins || 8) * 60;
+          if (order.stage === 'delivered' || order.stage === 'cancelled') return order;
+          const totalSec = (order.address?.etaMins || settings.deliveryEtaMins) * 60;
           const nextSec = Math.max(0, order.etaSecondsRemaining - 6);
           return {
             ...order,
@@ -211,10 +239,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [orders]);
+  }, [orders, settings.deliveryEtaMins]);
 
   const activeOrder = useMemo(
-    () => orders.find((o) => o.stage !== 'delivered') ?? orders[0] ?? null,
+    () => orders.find((o) => o.stage !== 'delivered' && o.stage !== 'cancelled') ?? orders[0] ?? null,
     [orders],
   );
 
@@ -271,7 +299,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       label,
       line1: line1.trim(),
       line2: line2.trim(),
-      etaMins: 8,
+      etaMins: settings.deliveryEtaMins,
     };
     setAddresses((prev) => [newAddr, ...prev]);
     setSelectedAddressId(newAddr.id);
@@ -279,9 +307,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const applyCoupon = (rawCode: string): { ok: boolean; message: string } => {
     const normalized = rawCode.trim().toUpperCase();
-    const found = COUPONS.find((c) => c.code === normalized);
+    const found = coupons.find((c) => c.code === normalized);
     if (!found) {
-      return { ok: false, message: 'Invalid coupon code. Try ZEPTO50, FIRST10 or FREEDEL.' };
+      return { ok: false, message: 'Invalid coupon code.' };
     }
     if (itemTotal < found.minOrder) {
       return {
@@ -301,9 +329,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (cart.length === 0) return { ok: false, error: 'Cart is empty' };
 
     if (dbConnected) {
-      if (!user) {
-        return { ok: false, error: 'AUTH_REQUIRED' };
-      }
+      if (!user) return { ok: false, error: 'AUTH_REQUIRED' };
       try {
         const { order } = await api.createOrder({
           items: cart.map((c) => ({ productId: c.product.id, quantity: c.quantity })),
@@ -323,7 +349,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }
 
-    // Offline fallback
     const rider = RIDER_POOL[orders.length % RIDER_POOL.length];
     const etaSec = selectedAddress.etaMins * 60;
     const newOrder: Order = {
@@ -337,6 +362,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       totalSavings,
       address: selectedAddress,
       paymentMethod,
+      paymentStatus: 'demo',
       createdAt: Date.now(),
       etaSecondsRemaining: etaSec,
       stage: 'confirmed',
@@ -356,7 +382,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setAllOrders((prev) => prev.map((o) => (o.id === orderId ? order : o)));
         return;
       } catch {
-        // Fallback below if transient
+        // Fallback below
       }
     }
 
@@ -371,8 +397,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       prev.map((order) => {
         if (order.id !== orderId) return order;
         const idx = stages.indexOf(order.stage);
+        if (idx === -1) return order;
         const nextStage = stages[Math.min(idx + 1, stages.length - 1)];
-        const remainingByStage: Record<OrderStage, number> = {
+        const remainingByStage: Record<string, number> = {
           confirmed: order.address.etaMins * 60,
           packing: Math.round(order.address.etaMins * 60 * 0.7),
           out_for_delivery: Math.round(order.address.etaMins * 60 * 0.35),
@@ -382,9 +409,24 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return {
           ...order,
           stage: nextStage,
-          etaSecondsRemaining: remainingByStage[nextStage],
+          etaSecondsRemaining: remainingByStage[nextStage] ?? 0,
         };
       }),
+    );
+  };
+
+  const cancelOrder = async (orderId: string) => {
+    if (dbConnected && user) {
+      const { order } = await api.cancelOrder(orderId);
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? order : o)));
+      setAllOrders((prev) => prev.map((o) => (o.id === orderId ? order : o)));
+      void refreshCatalog();
+      return;
+    }
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.id === orderId ? { ...o, stage: 'cancelled', etaSecondsRemaining: 0 } : o,
+      ),
     );
   };
 
@@ -413,12 +455,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       await api.logout();
     } catch {
-      // Ignore network error during logout
+      // Ignore
     }
     setStoredToken(null);
     setUser(null);
     setOrders([]);
     setAllOrders([]);
+    setAdminStats(null);
     setAddresses(DEFAULT_ADDRESSES);
     setSelectedAddressId(DEFAULT_ADDRESSES[0].id);
   };
@@ -432,6 +475,33 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // Ignore
     }
   }, [dbConnected, user?.role]);
+
+  const loadAdminStats = useCallback(async () => {
+    if (!dbConnected || user?.role !== 'admin') return;
+    try {
+      const res = await api.getAdminStats();
+      setAdminStats(res.stats);
+    } catch {
+      // Ignore
+    }
+  }, [dbConnected, user?.role]);
+
+  const updateSettings = async (payload: Partial<StoreSettings>) => {
+    const { settings: updated } = await api.updateSettings(payload);
+    setSettings(updated);
+    return updated;
+  };
+
+  const createCoupon = async (payload: Partial<Coupon>) => {
+    const { coupon } = await api.createCoupon(payload);
+    setCoupons((prev) => [coupon, ...prev.filter((c) => c.code !== coupon.code)]);
+    return coupon;
+  };
+
+  const deleteCoupon = async (code: string) => {
+    await api.deleteCoupon(code);
+    setCoupons((prev) => prev.filter((c) => c.code !== code));
+  };
 
   const createProduct = async (payload: Partial<Product>) => {
     const { product } = await api.createProduct(payload);
@@ -456,6 +526,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         user,
         dbConnected,
         loadingCatalog,
+        settings,
+        coupons,
         categories,
         products,
         cart,
@@ -465,7 +537,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         productSavings,
         deliveryFee,
         handlingFee,
-        freeDeliveryThreshold: FREE_DELIVERY_THRESHOLD,
+        freeDeliveryThreshold: settings.freeDeliveryThreshold,
         appliedCoupon,
         couponDiscount,
         grandTotal,
@@ -475,6 +547,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         selectedAddress,
         orders,
         allOrders,
+        adminStats,
         activeOrder,
         addToCart,
         decrementFromCart,
@@ -487,11 +560,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         removeCoupon,
         placeOrder,
         advanceOrderStage,
+        cancelOrder,
         login,
         register,
         logout,
         refreshCatalog,
         loadAllOrders,
+        loadAdminStats,
+        updateSettings,
+        createCoupon,
+        deleteCoupon,
         createProduct,
         updateProduct,
         deleteProduct,

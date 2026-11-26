@@ -8,6 +8,34 @@ export interface User {
   role: 'customer' | 'admin';
 }
 
+export interface StoreSettings {
+  storeName: string;
+  tagline: string;
+  logoEmoji: string;
+  primaryColor: string;
+  accentColor: string;
+  deliveryEtaMins: number;
+  deliveryFee: number;
+  freeDeliveryThreshold: number;
+  handlingFee: number;
+  heroBadge: string;
+  heroTitle: string;
+  heroSubtitle: string;
+  supportPhone: string;
+  supportEmail: string;
+  storeAddress: string;
+}
+
+export interface AdminStats {
+  totalRevenue: number;
+  totalOrders: number;
+  activeOrders: number;
+  cancelledOrders: number;
+  totalSkus: number;
+  lowStockCount: number;
+  totalCustomers: number;
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -27,6 +55,7 @@ export interface Product {
   price: number;
   mrp: number;
   emoji: string;
+  imageUrl?: string;
   cardBg: string;
   rating: number;
   deliveryMins: number;
@@ -58,6 +87,7 @@ export interface Coupon {
   type: 'flat' | 'percent' | 'free_delivery';
   value: number;
   maxDiscount?: number;
+  isActive?: boolean;
 }
 
 export type OrderStage =
@@ -65,7 +95,8 @@ export type OrderStage =
   | 'packing'
   | 'out_for_delivery'
   | 'arriving'
-  | 'delivered';
+  | 'delivered'
+  | 'cancelled';
 
 export interface Order {
   id: string;
@@ -78,6 +109,7 @@ export interface Order {
   totalSavings: number;
   address: Address;
   paymentMethod: string;
+  paymentStatus?: string;
   createdAt: number;
   etaSecondsRemaining: number;
   stage: OrderStage;

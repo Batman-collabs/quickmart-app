@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../context/StoreContext';
 import { COLORS } from '../theme/colors';
@@ -51,7 +51,15 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollBody}>
             <View style={[styles.heroBox, { backgroundColor: product.cardBg }]}>
-              <Text style={styles.heroEmoji}>{product.emoji}</Text>
+              {product.imageUrl ? (
+                <Image
+                  source={{ uri: product.imageUrl }}
+                  style={{ width: '100%', height: '100%', borderRadius: 18 }}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text style={styles.heroEmoji}>{product.emoji}</Text>
+              )}
               <View style={styles.heroBadges}>
                 <View style={styles.etaBadge}>
                   <Ionicons name="flash" size={12} color={COLORS.green} />

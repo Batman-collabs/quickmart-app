@@ -10,6 +10,7 @@ import { ProductDetailModal } from './src/components/ProductDetailModal';
 import { AddressModal } from './src/components/AddressModal';
 import { CartModal } from './src/components/CartModal';
 import { AuthModal } from './src/components/AuthModal';
+import { LegalDocKey, LegalModal } from './src/components/LegalModal';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { CategoriesScreen } from './src/screens/CategoriesScreen';
 import { SearchScreen } from './src/screens/SearchScreen';
@@ -19,7 +20,7 @@ import { COLORS } from './src/theme/colors';
 import { Product, TabRoute } from './src/types';
 
 function QuickMartShell() {
-  const { user, categories, orders } = useStore();
+  const { user, settings, categories, orders } = useStore();
   const [activeTab, setActiveTab] = useState<TabRoute>('home');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(
     categories[0]?.id ?? 'fruits-veg',
@@ -28,6 +29,7 @@ function QuickMartShell() {
   const [addressModalOpen, setAddressModalOpen] = useState(false);
   const [cartModalOpen, setCartModalOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [legalTab, setLegalTab] = useState<LegalDocKey | null>(null);
 
   useEffect(() => {
     if (categories.length > 0 && !categories.some((c) => c.id === selectedCategoryId)) {
@@ -40,7 +42,9 @@ function QuickMartShell() {
     setActiveTab('categories');
   };
 
-  const activeOrderCount = orders.filter((o) => o.stage !== 'delivered').length;
+  const activeOrderCount = orders.filter(
+    (o) => o.stage !== 'delivered' && o.stage !== 'cancelled',
+  ).length;
 
   const tabs: {
     key: TabRoute;
@@ -48,7 +52,7 @@ function QuickMartShell() {
     icon: keyof typeof Ionicons.glyphMap;
     iconOutline: keyof typeof Ionicons.glyphMap;
   }[] = [
-    { key: 'home', label: 'QuickMart', icon: 'home', iconOutline: 'home-outline' },
+    { key: 'home', label: settings.storeName, icon: 'home', iconOutline: 'home-outline' },
     { key: 'categories', label: 'Categories', icon: 'grid', iconOutline: 'grid-outline' },
     { key: 'search', label: 'Search', icon: 'search', iconOutline: 'search-outline' },
     { key: 'orders', label: 'Orders', icon: 'receipt', iconOutline: 'receipt-outline' },
@@ -83,6 +87,7 @@ function QuickMartShell() {
               onSelectProduct={setSelectedProduct}
               onOpenOrders={() => setActiveTab('orders')}
               onOpenCart={() => setCartModalOpen(true)}
+              onOpenLegal={(doc) => setLegalTab(doc)}
             />
           )}
           {activeTab === 'categories' && (
@@ -108,7 +113,6 @@ function QuickMartShell() {
           <FloatingCartBar onPress={() => setCartModalOpen(true)} />
         )}
 
-        {/* Bottom Navigation Bar */}
         <View style={styles.tabBar}>
           {tabs.map((tab) => {
             const active = activeTab === tab.key;
@@ -122,7 +126,7 @@ function QuickMartShell() {
                   <Ionicons
                     name={active ? tab.icon : tab.iconOutline}
                     size={22}
-                    color={active ? COLORS.primary : COLORS.textMuted}
+                    color={active ? settings.primaryColor : COLORS.textMuted}
                   />
                   {tab.key === 'orders' && activeOrderCount > 0 && (
                     <View style={styles.orderBadge}>
@@ -130,7 +134,13 @@ function QuickMartShell() {
                     </View>
                   )}
                 </View>
-                <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>
+                <Text
+                  style={[
+                    styles.tabLabel,
+                    active && { color: settings.primaryColor, fontWeight: '800' },
+                  ]}
+                  numberOfLines={1}
+                >
                   {tab.label}
                 </Text>
               </Pressable>
@@ -164,6 +174,13 @@ function QuickMartShell() {
           visible={authModalOpen}
           onClose={() => setAuthModalOpen(false)}
           onOpenAdmin={() => setActiveTab('admin')}
+          onOpenLegal={() => setLegalTab('contact')}
+        />
+
+        <LegalModal
+          visible={Boolean(legalTab)}
+          initialTab={legalTab ?? 'contact'}
+          onClose={() => setLegalTab(null)}
         />
       </View>
     </SafeAreaView>
@@ -214,10 +231,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: COLORS.textMuted,
-  },
-  tabLabelActive: {
-    color: COLORS.primary,
-    fontWeight: '800',
   },
   orderBadge: {
     position: 'absolute',

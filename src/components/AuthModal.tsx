@@ -17,14 +17,16 @@ interface AuthModalProps {
   visible: boolean;
   onClose: () => void;
   onOpenAdmin: () => void;
+  onOpenLegal: () => void;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
   visible,
   onClose,
   onOpenAdmin,
+  onOpenLegal,
 }) => {
-  const { user, dbConnected, login, register, logout } = useStore();
+  const { user, settings, dbConnected, login, register, logout } = useStore();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -69,7 +71,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         <View style={styles.sheet}>
           <View style={styles.header}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={styles.title}>{user ? 'Your Account' : 'Sign In to QuickMart'}</Text>
+              <Text style={styles.title}>{user ? 'Your Account' : `Sign In to ${settings.storeName}`}</Text>
               <View
                 style={[
                   styles.dbBadge,
@@ -126,6 +128,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     <Text style={styles.adminBtnText}>Open Store Admin Panel</Text>
                   </Pressable>
                 )}
+
+                <Pressable
+                  onPress={() => {
+                    onClose();
+                    onOpenLegal();
+                  }}
+                  style={{ alignItems: 'center', paddingVertical: 6 }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.primary }}>
+                    Terms, Privacy, Refund Policy & Store Support →
+                  </Text>
+                </Pressable>
 
                 <Pressable
                   onPress={async () => {
@@ -262,6 +276,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     <Text style={styles.demoSub}>admin@quickmart.app</Text>
                   </Pressable>
                 </View>
+
+                <Pressable
+                  onPress={() => {
+                    onClose();
+                    onOpenLegal();
+                  }}
+                  style={{ alignItems: 'center', paddingVertical: 8 }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.primary }}>
+                    Terms, Privacy, Refund Policy & Store Support →
+                  </Text>
+                </Pressable>
               </>
             )}
           </ScrollView>

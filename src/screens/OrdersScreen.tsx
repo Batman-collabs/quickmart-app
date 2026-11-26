@@ -54,7 +54,7 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
   onBrowseHome,
   onOpenCart,
 }) => {
-  const { orders, addToCart, advanceOrderStage } = useStore();
+  const { settings, orders, addToCart, advanceOrderStage, cancelOrder } = useStore();
 
   const handleReorder = (order: Order) => {
     order.items.forEach(({ product, quantity }) => {
@@ -71,9 +71,12 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
         <Text style={styles.emptyEmoji}>🛵</Text>
         <Text style={styles.emptyTitle}>No orders yet</Text>
         <Text style={styles.emptySub}>
-          Place your first QuickMart order to experience live 8-minute delivery tracking!
+          Place your first {settings.storeName} order to experience live {settings.deliveryEtaMins}-minute delivery tracking!
         </Text>
-        <Pressable onPress={onBrowseHome} style={styles.shopBtn}>
+        <Pressable
+          onPress={onBrowseHome}
+          style={[styles.shopBtn, { backgroundColor: settings.primaryColor }]}
+        >
           <Text style={styles.shopBtnText}>Start Shopping</Text>
         </Pressable>
       </View>
@@ -81,8 +84,15 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
   }
 
   const latest = orders[0];
-  const currentStageIdx = STAGES.findIndex((s) => s.key === latest.stage);
-  const progressPct = Math.round((currentStageIdx / (STAGES.length - 1)) * 100);
+  const isCancelled = latest.stage === 'cancelled';
+  const canCancel = latest.stage === 'confirmed' || latest.stage === 'packing';
+  const currentStageIdx = Math.max(
+    0,
+    STAGES.findIndex((s) => s.key === latest.stage),
+  );
+  const progressPct = isCancelled
+    ? 0
+    : Math.round((currentStageIdx / (STAGES.length - 1)) * 100);
 
   return (
     <ScrollView
@@ -90,130 +100,158 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      {/* Live Tracking Card */}
       <View style={styles.liveCard}>
         <View style={styles.liveHeader}>
           <View>
-            <Text style={styles.orderIdText}>Order #{latest.id}</Text>
-            <Text style={styles.etaBig}>
-              {latest.stage === 'delivered'
+            <Text style={styles.orderIdText}>
+              Order #{latest.id} • {latest.paymentStatus === 'paid_verified' ? 'PAID' : 'COD'}
+            </Text>
+            <Text
+              style={[
+                styles.etaBig,
+                { color: isCancelled ? COLORS.danger : settings.primaryColor },
+              ]}
+            >
+              {isCancelled
+                ? 'Order Cancelled'
+                : latest.stage === 'delivered'
                 ? 'Delivered 🎉'
                 : `Arriving in ${formatTimer(latest.etaSecondsRemaining)}`}
             </Text>
           </View>
-          {latest.stage !== 'delivered' && (
-            <Pressable
-              onPress={() => advanceOrderStage(latest.id)}
-              style={styles.simBtn}
-            >
-              <Text style={styles.simBtnText}>Next Step ⏭</Text>
-            </Pressable>
-          )}
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            {canCancel && (
+              <Pressable
+                onPress={() => void cancelOrder(latest.id)}
+                style={styles.cancelBtn}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </Pressable>
+            )}
+            {latest.stage !== 'delivered' && !isCancelled && (
+              <Pressable
+                onPress={() => void advanceOrderStage(latest.id)}
+                style={styles.simBtn}
+              >
+                <Text style={styles.simBtnText}>Next Step ⏭</Text>
+              </Pressable>
+            )}
+          </View>
         </View>
 
-        {/* Simulated Map Route Strip */}
-        <View style={styles.routeBox}>
-          <View style={styles.routeLabels}>
-            <Text style={styles.routePin}>🏪 Dark Store</Text>
-            <Text style={styles.routePin}>🏠 {latest.address.label}</Text>
-          </View>
-          <View style={styles.trackBarBg}>
-            <View style={[styles.trackBarFill, { width: `${Math.max(12, progressPct)}%` }]} />
-          </View>
-          <Text style={styles.routeStatus}>
-            {STAGES[currentStageIdx]?.label} — {STAGES[currentStageIdx]?.sub}
-          </Text>
-        </View>
-
-        {/* Stepper List */}
-        <View style={styles.stepsWrap}>
-          {STAGES.map((stage, idx) => {
-            const done = idx <= currentStageIdx;
-            return (
-              <View key={stage.key} style={styles.stepRow}>
-                <View
-                  style={[
-                    styles.stepDot,
-                    done ? styles.stepDotDone : styles.stepDotPending,
-                  ]}
-                >
-                  <Ionicons
-                    name={stage.icon}
-                    size={13}
-                    color={done ? COLORS.white : COLORS.textMuted}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.stepLabel, !done && { color: COLORS.textMuted }]}>
-                    {stage.label}
-                  </Text>
-                  <Text style={styles.stepSub}>{stage.sub}</Text>
-                </View>
+        {!isCancelled && (
+          <>
+            <View style={[styles.routeBox, { backgroundColor: settings.primaryColor }]}>
+              <View style={styles.routeLabels}>
+                <Text style={styles.routePin}>🏪 {settings.storeName} Hub</Text>
+                <Text style={styles.routePin}>🏠 {latest.address.label}</Text>
               </View>
-            );
-          })}
-        </View>
+              <View style={styles.trackBarBg}>
+                <View style={[styles.trackBarFill, { width: `${Math.max(12, progressPct)}%` }]} />
+              </View>
+              <Text style={styles.routeStatus}>
+                {STAGES[currentStageIdx]?.label} — {STAGES[currentStageIdx]?.sub}
+              </Text>
+            </View>
 
-        {/* Rider Info */}
-        <View style={styles.riderCard}>
-          <View style={styles.riderAvatar}>
-            <Text style={{ fontSize: 22 }}>🛵</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.riderName}>{latest.riderName}</Text>
-            <Text style={styles.riderMeta}>Delivery Partner • 4.9 ★ • {latest.riderPhone}</Text>
-          </View>
-          <View style={styles.verifiedChip}>
-            <Text style={styles.verifiedText}>Vaccinated</Text>
-          </View>
-        </View>
+            <View style={styles.stepsWrap}>
+              {STAGES.map((stage, idx) => {
+                const done = idx <= currentStageIdx;
+                return (
+                  <View key={stage.key} style={styles.stepRow}>
+                    <View
+                      style={[
+                        styles.stepDot,
+                        done ? styles.stepDotDone : styles.stepDotPending,
+                      ]}
+                    >
+                      <Ionicons
+                        name={stage.icon}
+                        size={13}
+                        color={done ? COLORS.white : COLORS.textMuted}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.stepLabel, !done && { color: COLORS.textMuted }]}>
+                        {stage.label}
+                      </Text>
+                      <Text style={styles.stepSub}>{stage.sub}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+
+            <View style={styles.riderCard}>
+              <View style={styles.riderAvatar}>
+                <Text style={{ fontSize: 22 }}>🛵</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.riderName}>{latest.riderName}</Text>
+                <Text style={styles.riderMeta}>
+                  Delivery Partner • 4.9 ★ • {latest.riderPhone}
+                </Text>
+              </View>
+              <View style={styles.verifiedChip}>
+                <Text style={styles.verifiedText}>Verified</Text>
+              </View>
+            </View>
+          </>
+        )}
       </View>
 
-      {/* Order History */}
       <Text style={styles.historyHeader}>Your Orders ({orders.length})</Text>
-      {orders.map((order) => (
-        <View key={order.id} style={styles.historyCard}>
-          <View style={styles.historyTop}>
-            <View>
-              <Text style={styles.historyId}>#{order.id}</Text>
-              <Text style={styles.historyMeta}>
-                {order.items.reduce((s, i) => s + i.quantity, 0)} items • ₹{order.grandTotal} •{' '}
-                {order.paymentMethod.split('•')[0].trim()}
-              </Text>
+      {orders.map((order) => {
+        const badgeBg =
+          order.stage === 'delivered'
+            ? COLORS.greenLight
+            : order.stage === 'cancelled'
+            ? '#FEE2E2'
+            : COLORS.primaryLight;
+        const badgeText =
+          order.stage === 'delivered'
+            ? COLORS.green
+            : order.stage === 'cancelled'
+            ? COLORS.danger
+            : COLORS.primary;
+
+        return (
+          <View key={order.id} style={styles.historyCard}>
+            <View style={styles.historyTop}>
+              <View>
+                <Text style={styles.historyId}>#{order.id}</Text>
+                <Text style={styles.historyMeta}>
+                  {order.items.reduce((s, i) => s + i.quantity, 0)} items • ₹{order.grandTotal} •{' '}
+                  {order.paymentMethod.split('•')[0].trim()}
+                </Text>
+              </View>
+              <View style={[styles.statusPill, { backgroundColor: badgeBg }]}>
+                <Text style={[styles.statusPillText, { color: badgeText }]}>
+                  {order.stage === 'delivered'
+                    ? 'DELIVERED'
+                    : order.stage === 'cancelled'
+                    ? 'CANCELLED'
+                    : 'LIVE'}
+                </Text>
+              </View>
             </View>
-            <View
-              style={[
-                styles.statusPill,
-                {
-                  backgroundColor:
-                    order.stage === 'delivered' ? COLORS.greenLight : COLORS.primaryLight,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusPillText,
-                  { color: order.stage === 'delivered' ? COLORS.green : COLORS.primary },
-                ]}
-              >
-                {order.stage === 'delivered' ? 'DELIVERED' : 'LIVE'}
-              </Text>
+
+            <Text style={styles.itemsPreview} numberOfLines={2}>
+              {order.items
+                .map((i) => `${i.product.emoji} ${i.product.name} ×${i.quantity}`)
+                .join(', ')}
+            </Text>
+
+            <View style={styles.historyFooter}>
+              <Text style={styles.savedNote}>Saved ₹{order.totalSavings}</Text>
+              <Pressable onPress={() => handleReorder(order)} style={styles.reorderBtn}>
+                <Ionicons name="refresh" size={14} color={COLORS.accent} />
+                <Text style={styles.reorderText}>Reorder</Text>
+              </Pressable>
             </View>
           </View>
-
-          <Text style={styles.itemsPreview} numberOfLines={2}>
-            {order.items.map((i) => `${i.product.emoji} ${i.product.name} ×${i.quantity}`).join(', ')}
-          </Text>
-
-          <View style={styles.historyFooter}>
-            <Text style={styles.savedNote}>Saved ₹{order.totalSavings}</Text>
-            <Pressable onPress={() => handleReorder(order)} style={styles.reorderBtn}>
-              <Ionicons name="refresh" size={14} color={COLORS.accent} />
-              <Text style={styles.reorderText}>Reorder</Text>
-            </Pressable>
-          </View>
-        </View>
-      ))}
+        );
+      })}
     </ScrollView>
   );
 };
@@ -286,6 +324,17 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: COLORS.primary,
     marginTop: 2,
+  },
+  cancelBtn: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  cancelBtnText: {
+    color: COLORS.danger,
+    fontSize: 11,
+    fontWeight: '800',
   },
   simBtn: {
     backgroundColor: COLORS.primaryLight,

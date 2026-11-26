@@ -10,7 +10,6 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COUPONS } from '../data/catalog';
 import { useStore } from '../context/StoreContext';
 import { COLORS } from '../theme/colors';
 
@@ -38,6 +37,8 @@ export const CartModal: React.FC<CartModalProps> = ({
   const {
     user,
     dbConnected,
+    settings,
+    coupons,
     products,
     cart,
     itemTotal,
@@ -122,7 +123,7 @@ export const CartModal: React.FC<CartModalProps> = ({
         {cart.length === 0 ? (
           <View style={styles.emptyWrap}>
             <Text style={styles.emptyEmoji}>🛒</Text>
-            <Text style={styles.emptyTitle}>Your QuickMart cart is empty</Text>
+            <Text style={styles.emptyTitle}>Your {settings.storeName} cart is empty</Text>
             <Text style={styles.emptySub}>
               Add fresh groceries, snacks, or daily essentials for 8-minute delivery!
             </Text>
@@ -149,7 +150,7 @@ export const CartModal: React.FC<CartModalProps> = ({
               {remainingFreeDel > 0 && (
                 <View style={styles.progressTip}>
                   <Text style={styles.progressTipText}>
-                    Add ₹{remainingFreeDel} more to unlock FREE delivery (save ₹25)
+                    Add ₹{remainingFreeDel} more to unlock FREE delivery (save ₹{settings.deliveryFee})
                   </Text>
                 </View>
               )}
@@ -270,7 +271,7 @@ export const CartModal: React.FC<CartModalProps> = ({
                       </Text>
                     )}
                     <View style={styles.couponList}>
-                      {COUPONS.map((c) => (
+                      {coupons.map((c) => (
                         <Pressable
                           key={c.code}
                           onPress={() => handleApplyCoupon(c.code)}

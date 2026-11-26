@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../context/StoreContext';
 import { COLORS, SHADOWS } from '../theme/colors';
@@ -16,13 +16,15 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   onPress,
   compact = false,
 }) => {
-  const { getQuantity, addToCart, decrementFromCart, favorites, toggleFavorite } = useStore();
+  const { settings, getQuantity, addToCart, decrementFromCart, favorites, toggleFavorite } =
+    useStore();
   const quantity = getQuantity(product.id);
   const isFav = favorites.includes(product.id);
   const discountPct =
     product.mrp > product.price
       ? Math.round(((product.mrp - product.price) / product.mrp) * 100)
       : 0;
+  const outOfStock = product.stock <= 0;
 
   return (
     <Pressable
@@ -36,7 +38,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     >
       <View style={[styles.imageBox, { backgroundColor: product.cardBg }]}>
         {discountPct >= 5 && (
-          <View style={styles.discountBadge}>
+          <View style={[styles.discountBadge, { backgroundColor: settings.primaryColor }]}>
             <Text style={styles.discountText}>{discountPct}% OFF</Text>
           </View>
         )}
@@ -51,11 +53,19 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           <Ionicons
             name={isFav ? 'heart' : 'heart-outline'}
             size={16}
-            color={isFav ? COLORS.accent : COLORS.textSecondary}
+            color={isFav ? settings.accentColor : COLORS.textSecondary}
           />
         </Pressable>
 
-        <Text style={styles.emoji}>{product.emoji}</Text>
+        {product.imageUrl ? (
+          <Image
+            source={{ uri: product.imageUrl }}
+            style={styles.productImg}
+            resizeMode="cover"
+          />
+        ) : (
+          <Text style={styles.emoji}>{product.emoji}</Text>
+        )}
 
         <View style={styles.etaChip}>
           <Ionicons name="flash" size={10} color={COLORS.green} />
@@ -85,18 +95,22 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             )}
           </View>
 
-          {quantity === 0 ? (
+          {outOfStock ? (
+            <View style={styles.outBadge}>
+              <Text style={styles.outText}>SOLD OUT</Text>
+            </View>
+          ) : quantity === 0 ? (
             <Pressable
               onPress={(e) => {
                 e.stopPropagation();
                 addToCart(product);
               }}
-              style={styles.addBtn}
+              style={[styles.addBtn, { borderColor: settings.accentColor }]}
             >
-              <Text style={styles.addBtnText}>ADD</Text>
+              <Text style={[styles.addBtnText, { color: settings.accentColor }]}>ADD</Text>
             </Pressable>
           ) : (
-            <View style={styles.stepper}>
+            <View style={[styles.stepper, { backgroundColor: settings.accentColor }]}>
               <Pressable
                 onPress={(e) => {
                   e.stopPropagation();
@@ -149,10 +163,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
   },
+  productImg: {
+    width: '100%',
+    height: '100%',
+  },
   discountBadge: {
     position: 'absolute',
     top: 8,
     left: 8,
+    zIndex: 2,
     backgroundColor: COLORS.primary,
     paddingHorizontal: 6,
     paddingVertical: 3,
@@ -168,6 +187,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 8,
     right: 8,
+    zIndex: 2,
     backgroundColor: 'rgba(255,255,255,0.88)',
     borderRadius: 14,
     padding: 5,
@@ -179,6 +199,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 6,
     left: 8,
+    zIndex: 2,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.94)',
@@ -241,6 +262,17 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.textMuted,
     textDecorationLine: 'line-through',
+  },
+  outBadge: {
+    backgroundColor: COLORS.surfaceMuted,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  outText: {
+    color: COLORS.textMuted,
+    fontSize: 9,
+    fontWeight: '800',
   },
   addBtn: {
     borderWidth: 1.5,

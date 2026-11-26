@@ -1,5 +1,15 @@
 import { Platform } from 'react-native';
-import { Address, Category, Order, OrderStage, Product, User } from '../types';
+import {
+  Address,
+  AdminStats,
+  Category,
+  Coupon,
+  Order,
+  OrderStage,
+  Product,
+  StoreSettings,
+  User,
+} from '../types';
 
 const TOKEN_KEY = 'quickmart_auth_token_v1';
 const NATIVE_API_BASE = 'https://quickmart.quickmart-aayush.workers.dev';
@@ -71,7 +81,31 @@ export const api = {
   health: () => request<{ ok: boolean; db: string; productCount: number }>('/api/health'),
 
   getCatalog: () =>
-    request<{ categories: Category[]; products: Product[] }>('/api/catalog'),
+    request<{
+      categories: Category[];
+      products: Product[];
+      settings?: StoreSettings;
+      coupons?: Coupon[];
+    }>('/api/catalog'),
+
+  updateSettings: (payload: Partial<StoreSettings>) =>
+    request<{ settings: StoreSettings }>('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
+  getAdminStats: () => request<{ stats: AdminStats }>('/api/admin/stats'),
+
+  createCoupon: (payload: Partial<Coupon>) =>
+    request<{ coupon: Coupon }>('/api/coupons', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  deleteCoupon: (code: string) =>
+    request<{ ok: boolean }>(`/api/coupons?code=${encodeURIComponent(code)}`, {
+      method: 'DELETE',
+    }),
 
   createProduct: (payload: Partial<Product>) =>
     request<{ product: Product }>('/api/products', {
@@ -137,5 +171,11 @@ export const api = {
     request<{ order: Order }>('/api/orders', {
       method: 'PATCH',
       body: JSON.stringify({ orderId, stage }),
+    }),
+
+  cancelOrder: (orderId: string) =>
+    request<{ order: Order }>('/api/orders/cancel', {
+      method: 'POST',
+      body: JSON.stringify({ orderId }),
     }),
 };
