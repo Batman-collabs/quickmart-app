@@ -1,7 +1,6 @@
 import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { PRODUCTS } from '../data/catalog';
 import { useStore } from '../context/StoreContext';
 import { COLORS } from '../theme/colors';
 import { Product } from '../types';
@@ -17,7 +16,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   onClose,
   onSelectProduct,
 }) => {
-  const { getQuantity, addToCart, decrementFromCart, favorites, toggleFavorite } = useStore();
+  const { products, getQuantity, addToCart, decrementFromCart, favorites, toggleFavorite } =
+    useStore();
 
   if (!product) return null;
 
@@ -28,7 +28,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       ? Math.round(((product.mrp - product.price) / product.mrp) * 100)
       : 0;
 
-  const similar = PRODUCTS.filter(
+  const similar = products.filter(
     (p) => p.categoryId === product.categoryId && p.id !== product.id,
   ).slice(0, 4);
 

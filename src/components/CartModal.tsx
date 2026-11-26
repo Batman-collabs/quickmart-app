@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Modal,
   Pressable,
   ScrollView,
@@ -9,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COUPONS, PRODUCTS } from '../data/catalog';
+import { COUPONS } from '../data/catalog';
 import { useStore } from '../context/StoreContext';
 import { COLORS } from '../theme/colors';
 
@@ -17,6 +18,7 @@ interface CartModalProps {
   visible: boolean;
   onClose: () => void;
   onOpenAddress: () => void;
+  onRequireAuth: () => void;
   onOrderPlaced: () => void;
 }
 
@@ -30,9 +32,13 @@ export const CartModal: React.FC<CartModalProps> = ({
   visible,
   onClose,
   onOpenAddress,
+  onRequireAuth,
   onOrderPlaced,
 }) => {
   const {
+    user,
+    dbConnected,
+    products,
     cart,
     itemTotal,
     deliveryFee,
@@ -55,8 +61,10 @@ export const CartModal: React.FC<CartModalProps> = ({
     null,
   );
   const [paymentMethod, setPaymentMethod] = useState(PAYMENT_OPTIONS[0]);
+  const [placing, setPlacing] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
 
-  const quickAdds = PRODUCTS.filter((p) =>
+  const quickAdds = products.filter((p) =>
     ['p6', 'p9', 'p10', 'p13'].includes(p.id),
   );
 
@@ -66,12 +74,30 @@ export const CartModal: React.FC<CartModalProps> = ({
     if (res.ok) setCouponInput('');
   };
 
-  const handleCheckout = () => {
-    const order = placeOrder(paymentMethod);
-    if (order) {
+  const handleCheckout = async () => {
+    setOrderError(null);
+    if (dbConnected && !user) {
+      onClose();
+      onRequireAuth();
+      return;
+    }
+    setPlacing(true);
+    try {
+      const res = await placeOrder(paymentMethod);
+      if (!res.ok) {
+        if (res.error === 'AUTH_REQUIRED') {
+          onClose();
+          onRequireAuth();
+          return;
+        }
+        setOrderError(res.error ?? 'Could not place order');
+        return;
+      }
       setCouponFeedback(null);
       onClose();
       onOrderPlaced();
+    } finally {
+      setPlacing(false);
     }
   };
 
@@ -335,14 +361,36 @@ export const CartModal: React.FC<CartModalProps> = ({
               </View>
             </ScrollView>
 
+            {orderError && (
+              <View style={{ paddingHorizontal: 16, paddingBottom: 6, backgroundColor: COLORS.surface }}>
+                <Text style={{ color: COLORS.danger, fontSize: 12, fontWeight: '700' }}>
+                  {orderError}
+                </Text>
+              </View>
+            )}
+
             <View style={styles.checkoutBar}>
               <View>
                 <Text style={styles.payTotal}>₹{grandTotal}</Text>
-                <Text style={styles.payTotalSub}>TOTAL PAYABLE</Text>
+                <Text style={styles.payTotalSub}>
+                  {dbConnected && !user ? 'SIGN IN TO CHECKOUT' : 'TOTAL PAYABLE'}
+                </Text>
               </View>
-              <Pressable onPress={handleCheckout} style={styles.checkoutBtn}>
-                <Text style={styles.checkoutBtnText}>Place Order</Text>
-                <Ionicons name="arrow-forward" size={18} color={COLORS.white} />
+              <Pressable
+                onPress={handleCheckout}
+                disabled={placing}
+                style={[styles.checkoutBtn, placing && { opacity: 0.7 }]}
+              >
+                {placing ? (
+                  <ActivityIndicator color={COLORS.white} />
+                ) : (
+                  <>
+                    <Text style={styles.checkoutBtnText}>
+                      {dbConnected && !user ? 'Sign In & Order' : 'Place Order'}
+                    </Text>
+                    <Ionicons name="arrow-forward" size={18} color={COLORS.white} />
+                  </>
+                )}
               </Pressable>
             </View>
           </>

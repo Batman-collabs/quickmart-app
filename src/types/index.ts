@@ -1,4 +1,12 @@
-export type TabRoute = 'home' | 'categories' | 'search' | 'orders';
+export type TabRoute = 'home' | 'categories' | 'search' | 'orders' | 'admin';
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  role: 'customer' | 'admin';
+}
 
 export interface Category {
   id: string;

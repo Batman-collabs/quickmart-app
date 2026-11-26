@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { CATEGORIES, PRODUCTS } from '../data/catalog';
+import { useStore } from '../context/StoreContext';
 import { ProductCard } from '../components/ProductCard';
 import { COLORS } from '../theme/colors';
 import { Product } from '../types';
@@ -18,13 +18,15 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
   onSelectCategory,
   onSelectProduct,
 }) => {
+  const { categories, products } = useStore();
   const [sortBy, setSortBy] = useState<SortKey>('popular');
 
   const activeCategory =
-    CATEGORIES.find((c) => c.id === selectedCategoryId) ?? CATEGORIES[0];
+    categories.find((c) => c.id === selectedCategoryId) ?? categories[0];
 
   const items = useMemo(() => {
-    const filtered = PRODUCTS.filter((p) => p.categoryId === activeCategory.id);
+    if (!activeCategory) return [];
+    const filtered = products.filter((p) => p.categoryId === activeCategory.id);
     if (sortBy === 'price_low') {
       return [...filtered].sort((a, b) => a.price - b.price);
     }
@@ -34,7 +36,9 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
       );
     }
     return filtered;
-  }, [activeCategory.id, sortBy]);
+  }, [activeCategory, products, sortBy]);
+
+  if (!activeCategory) return null;
 
   return (
     <View style={styles.container}>
@@ -44,7 +48,7 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
         contentContainerStyle={styles.railContent}
         showsVerticalScrollIndicator={false}
       >
-        {CATEGORIES.map((cat) => {
+        {categories.map((cat) => {
           const isActive = cat.id === activeCategory.id;
           return (
             <Pressable

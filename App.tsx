@@ -1,29 +1,39 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { CATEGORIES } from './src/data/catalog';
 import { StoreProvider, useStore } from './src/context/StoreContext';
 import { HeaderBar } from './src/components/HeaderBar';
 import { FloatingCartBar } from './src/components/FloatingCartBar';
 import { ProductDetailModal } from './src/components/ProductDetailModal';
 import { AddressModal } from './src/components/AddressModal';
 import { CartModal } from './src/components/CartModal';
+import { AuthModal } from './src/components/AuthModal';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { CategoriesScreen } from './src/screens/CategoriesScreen';
 import { SearchScreen } from './src/screens/SearchScreen';
 import { OrdersScreen } from './src/screens/OrdersScreen';
+import { AdminScreen } from './src/screens/AdminScreen';
 import { COLORS } from './src/theme/colors';
 import { Product, TabRoute } from './src/types';
 
 function QuickMartShell() {
-  const { orders } = useStore();
+  const { user, categories, orders } = useStore();
   const [activeTab, setActiveTab] = useState<TabRoute>('home');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(CATEGORIES[0].id);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(
+    categories[0]?.id ?? 'fruits-veg',
+  );
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [addressModalOpen, setAddressModalOpen] = useState(false);
   const [cartModalOpen, setCartModalOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (categories.length > 0 && !categories.some((c) => c.id === selectedCategoryId)) {
+      setSelectedCategoryId(categories[0].id);
+    }
+  }, [categories, selectedCategoryId]);
 
   const openCategory = (catId: string) => {
     setSelectedCategoryId(catId);
@@ -31,6 +41,28 @@ function QuickMartShell() {
   };
 
   const activeOrderCount = orders.filter((o) => o.stage !== 'delivered').length;
+
+  const tabs: {
+    key: TabRoute;
+    label: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    iconOutline: keyof typeof Ionicons.glyphMap;
+  }[] = [
+    { key: 'home', label: 'QuickMart', icon: 'home', iconOutline: 'home-outline' },
+    { key: 'categories', label: 'Categories', icon: 'grid', iconOutline: 'grid-outline' },
+    { key: 'search', label: 'Search', icon: 'search', iconOutline: 'search-outline' },
+    { key: 'orders', label: 'Orders', icon: 'receipt', iconOutline: 'receipt-outline' },
+    ...(user?.role === 'admin'
+      ? [
+          {
+            key: 'admin' as TabRoute,
+            label: 'Admin',
+            icon: 'storefront' as const,
+            iconOutline: 'storefront-outline' as const,
+          },
+        ]
+      : []),
+  ];
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -40,7 +72,7 @@ function QuickMartShell() {
           <HeaderBar
             onPressAddress={() => setAddressModalOpen(true)}
             onPressSearch={() => setActiveTab('search')}
-            onPressOrders={() => setActiveTab('orders')}
+            onPressProfile={() => setAuthModalOpen(true)}
           />
         )}
 
@@ -69,25 +101,16 @@ function QuickMartShell() {
               onOpenCart={() => setCartModalOpen(true)}
             />
           )}
+          {activeTab === 'admin' && <AdminScreen />}
         </View>
 
-        <FloatingCartBar onPress={() => setCartModalOpen(true)} />
+        {activeTab !== 'admin' && (
+          <FloatingCartBar onPress={() => setCartModalOpen(true)} />
+        )}
 
         {/* Bottom Navigation Bar */}
         <View style={styles.tabBar}>
-          {(
-            [
-              { key: 'home', label: 'QuickMart', icon: 'home', iconOutline: 'home-outline' },
-              { key: 'categories', label: 'Categories', icon: 'grid', iconOutline: 'grid-outline' },
-              { key: 'search', label: 'Search', icon: 'search', iconOutline: 'search-outline' },
-              { key: 'orders', label: 'Orders', icon: 'receipt', iconOutline: 'receipt-outline' },
-            ] as {
-              key: TabRoute;
-              label: string;
-              icon: keyof typeof Ionicons.glyphMap;
-              iconOutline: keyof typeof Ionicons.glyphMap;
-            }[]
-          ).map((tab) => {
+          {tabs.map((tab) => {
             const active = activeTab === tab.key;
             return (
               <Pressable
@@ -133,7 +156,14 @@ function QuickMartShell() {
             setCartModalOpen(false);
             setAddressModalOpen(true);
           }}
+          onRequireAuth={() => setAuthModalOpen(true)}
           onOrderPlaced={() => setActiveTab('orders')}
+        />
+
+        <AuthModal
+          visible={authModalOpen}
+          onClose={() => setAuthModalOpen(false)}
+          onOpenAdmin={() => setActiveTab('admin')}
         />
       </View>
     </SafeAreaView>

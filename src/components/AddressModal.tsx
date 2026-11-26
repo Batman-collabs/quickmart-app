@@ -25,9 +25,9 @@ export const AddressModal: React.FC<AddressModalProps> = ({ visible, onClose }) 
   const [line1, setLine1] = useState('');
   const [line2, setLine2] = useState('');
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!line1.trim() || !line2.trim()) return;
-    addAddress(label, line1, line2);
+    await addAddress(label, line1, line2);
     setLine1('');
     setLine2('');
     setShowForm(false);

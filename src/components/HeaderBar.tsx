@@ -7,15 +7,15 @@ import { COLORS } from '../theme/colors';
 interface HeaderBarProps {
   onPressAddress: () => void;
   onPressSearch: () => void;
-  onPressOrders: () => void;
+  onPressProfile: () => void;
 }
 
 export const HeaderBar: React.FC<HeaderBarProps> = ({
   onPressAddress,
   onPressSearch,
-  onPressOrders,
+  onPressProfile,
 }) => {
-  const { selectedAddress, activeOrder } = useStore();
+  const { selectedAddress, user, dbConnected } = useStore();
 
   return (
     <View style={styles.container}>
@@ -38,11 +38,19 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           </View>
         </Pressable>
 
-        <Pressable onPress={onPressOrders} style={styles.profileBtn}>
-          <Ionicons
-            name={activeOrder && activeOrder.stage !== 'delivered' ? 'bicycle' : 'person-outline'}
-            size={20}
-            color={COLORS.white}
+        <Pressable onPress={onPressProfile} style={styles.profileBtn}>
+          {user ? (
+            <Text style={styles.avatarInitial}>
+              {user.name.slice(0, 1).toUpperCase()}
+            </Text>
+          ) : (
+            <Ionicons name="person-outline" size={20} color={COLORS.white} />
+          )}
+          <View
+            style={[
+              styles.statusDot,
+              { backgroundColor: dbConnected ? '#34D399' : '#FBBF24' },
+            ]}
           />
         </Pressable>
       </View>
@@ -120,6 +128,22 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  avatarInitial: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  statusDot: {
+    position: 'absolute',
+    bottom: 1,
+    right: 1,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
   },
   searchPill: {
     flexDirection: 'row',

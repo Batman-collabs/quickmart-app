@@ -1,7 +1,6 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { CATEGORIES, PRODUCTS } from '../data/catalog';
 import { useStore } from '../context/StoreContext';
 import { ProductCard } from '../components/ProductCard';
 import { COLORS, SHADOWS } from '../theme/colors';
@@ -20,11 +19,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onOpenOrders,
   onOpenCart,
 }) => {
-  const { activeOrder, itemTotal, freeDeliveryThreshold, applyCoupon, appliedCoupon } =
-    useStore();
+  const {
+    categories,
+    products,
+    activeOrder,
+    itemTotal,
+    freeDeliveryThreshold,
+    applyCoupon,
+    appliedCoupon,
+  } = useStore();
 
-  const flashDeals = PRODUCTS.filter((p) => p.isFlashDeal);
-  const bestsellers = PRODUCTS.filter((p) => p.isBestseller);
+  const flashDeals = products.filter((p) => p.isFlashDeal);
+  const bestsellers = products.filter((p) => p.isBestseller);
   const remainingForFreeDel = Math.max(0, freeDeliveryThreshold - itemTotal);
 
   const stageLabel: Record<string, string> = {
@@ -109,7 +115,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             <Text style={styles.hotBadgeText}>UP TO 30% OFF</Text>
           </View>
         </View>
-        <Pressable onPress={() => onSelectCategory(CATEGORIES[0].id)}>
+        <Pressable onPress={() => categories[0] && onSelectCategory(categories[0].id)}>
           <Text style={styles.seeAll}>See all</Text>
         </Pressable>
       </View>
@@ -136,7 +142,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       </View>
 
       <View style={styles.categoryGrid}>
-        {CATEGORIES.map((cat) => (
+        {categories.map((cat) => (
           <Pressable
             key={cat.id}
             onPress={() => onSelectCategory(cat.id)}
@@ -158,7 +164,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       {/* Bestsellers 2-Column Grid */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>🔥 Bestsellers Near You</Text>
-        <Pressable onPress={() => onSelectCategory(CATEGORIES[1].id)}>
+        <Pressable onPress={() => (categories[1] ?? categories[0]) && onSelectCategory((categories[1] ?? categories[0]).id)}>
           <Text style={styles.seeAll}>Explore</Text>
         </Pressable>
       </View>

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { PRODUCTS, TRENDING_SEARCHES } from '../data/catalog';
+import { TRENDING_SEARCHES } from '../data/catalog';
 import { useStore } from '../context/StoreContext';
 import { ProductCard } from '../components/ProductCard';
 import { COLORS } from '../theme/colors';
@@ -12,13 +12,13 @@ interface SearchScreenProps {
 }
 
 export const SearchScreen: React.FC<SearchScreenProps> = ({ onSelectProduct }) => {
-  const { favorites } = useStore();
+  const { products, favorites } = useStore();
   const [query, setQuery] = useState('');
   const [onlyFavorites, setOnlyFavorites] = useState(false);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return PRODUCTS.filter((p) => {
+    return products.filter((p) => {
       if (onlyFavorites && !favorites.includes(p.id)) return false;
       if (!q) return true;
       return (
