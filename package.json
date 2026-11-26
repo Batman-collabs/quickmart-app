@@ -15,7 +15,10 @@
     "react-native-web": "^0.21.4"
   },
   "devDependencies": {
+    "@cloudflare/build-output-utils": "^1.0.0-rc.4",
+    "@cloudflare/config": "^1.0.0-rc.4",
     "@types/react": "~19.3.0",
+    "esbuild": "^0.28.2",
     "typescript": "~6.0.3"
   },
   "scripts": {

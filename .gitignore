@@ -44,3 +44,6 @@ yarn-error.*
 .netlify
 dist-android/
 dist-web/
+
+# Cloudflare
+.cloudflare/

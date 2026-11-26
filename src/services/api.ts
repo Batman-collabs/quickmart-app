@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import { Address, Category, Order, OrderStage, Product, User } from '../types';
 
 const TOKEN_KEY = 'quickmart_auth_token_v1';
-const NATIVE_API_BASE = 'https://quickmart-aayush.netlify.app';
+const NATIVE_API_BASE = 'https://quickmart.quickmart-aayush.workers.dev';
 
 let memoryToken: string | null = null;
 
