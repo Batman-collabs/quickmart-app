@@ -100,7 +100,7 @@ export const AdminScreen: React.FC = () => {
         <View>
           <Text style={styles.topTitle}>Store Manager Console</Text>
           <Text style={styles.topSub}>
-            {dbConnected ? 'Connected to live Netlify Postgres DB' : 'Offline mode'}
+            {dbConnected ? 'Connected to live QuickMart Cloud DB' : 'Offline mode'}
           </Text>
         </View>
         <View style={styles.countPill}>
